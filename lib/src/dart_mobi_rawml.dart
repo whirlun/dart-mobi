@@ -32,6 +32,43 @@ extension RawmlParser on MobiData {
       parseIndex(this, skelMeta, indxRecordNumber);
       rawml.skel = skelMeta;
     }
+    if (existsFragIndx(this)) {
+      MobiIndx fragMeta = MobiIndx();
+      final indxRecordNumber = mobiHeader!.fragmentIndex! + offset;
+      parseIndex(this, fragMeta, indxRecordNumber);
+      rawml.frag = fragMeta;
+    }
+    if (parseToc) {
+      if (existsGuideIndx(this)) {
+        MobiIndx guideMeta = MobiIndx();
+        final indxRecordNumber = mobiHeader!.guideIndex! + offset;
+        parseIndex(this, guideMeta, indxRecordNumber);
+        rawml.guide = guideMeta;
+      }
+      if (existsNcx(this)) {
+        MobiIndx ncxMeta = MobiIndx();
+        final indxRecordNumber = mobiHeader!.ncxIndex! + offset;
+        parseIndex(this, ncxMeta, indxRecordNumber);
+        rawml.ncx = ncxMeta;
+      }
+    }
+
+    if (parseDict && isDictionary(this)) {
+      MobiIndx orthData = MobiIndx();
+      final indxRecordNumber = mobiHeader!.orthographicIndex! + offset;
+      parseIndex(this, orthData, indxRecordNumber);
+      rawml.orth = orthData;
+      if (existsInfl(this)) {
+        MobiIndx inflData = MobiIndx();
+        final indxRecordNumber = mobiHeader!.inflectionIndex! + offset;
+        parseIndex(this, inflData, indxRecordNumber);
+        rawml.infl = inflData;
+      }
+    }
+    reconstructParts(rawml);
+    if (reconstruct) {
+
+    }
   }
 
   parseIndex(MobiData data, MobiIndx indx, int indxRecordNumber) {
@@ -498,6 +535,20 @@ extension RawmlParser on MobiData {
     tagx.tagsCount = i;
   }
 
+  int getIndxEntryTagValue(MobiIndexEntry entry, int tagId, int tagIndex) {
+    int i = 0;
+    while (i < entry.tagsCount) {
+      if (entry.tags[i].tagId == tagId) {
+        if (tagIndex < entry.tags[i].tagValuesCount) {
+          return entry.tags[i].tagValues[tagIndex];
+        }
+        break;
+      }
+      i++;
+    }
+    throw MobiInvalidDataException("Tag not found in entry");
+  }
+
   void reconstructFlow(MobiRawml rawml, Uint8List text, int length) {
     if (rawml.fdst != null) {
       rawml.flow = MobiPart();
@@ -594,6 +645,98 @@ extension RawmlParser on MobiData {
         head = currPart;
       }
     }
+  }
+
+  void reconstructParts(MobiRawml rawml) {
+    if (rawml.flow == null) {
+      throw MobiInvalidDataException("No flow data");
+    }
+    MobiBuffer buf = MobiBuffer(rawml.flow!.data!, 0);
+    rawml.markup = MobiPart();
+    var curr = rawml.markup;
+    if (rawml.skel == null || rawml.skel?.entriesCount == 0) {
+      curr!.uid = 0;
+      curr.size = buf.maxlen;
+      curr.data = buf.data;
+      curr.fileType = rawml.flow!.fileType;
+      curr.next = null;
+      return;
+    }
+    if (rawml.frag == null) {
+      throw MobiInvalidDataException("No fragment data");
+    }
+    int i = 0;
+    int j = 0;
+    int currPosition = 0;
+    int totalFragmentsCount = rawml.frag!.totalEntriesCount;
+    while (i < rawml.skel!.entriesCount) {
+      MobiIndexEntry entry = rawml.skel!.entries[i];
+      int fragmentsCount = getIndxEntryTagValue(entry, 1, 0);
+      if (fragmentsCount > totalFragmentsCount) {
+        throw MobiInvalidDataException("Too many fragments");
+      }
+      totalFragmentsCount -= fragmentsCount;
+      int skelPosition = getIndxEntryTagValue(entry, 6, 0);
+      int skelLength = getIndxEntryTagValue(entry, 6, 1);
+      if (skelPosition + skelLength > buf.maxlen) {
+        throw MobiInvalidDataException("Skel data too long");
+      }
+      buf.setPos(skelPosition);
+      final fragBuffer = buf.getRaw(skelLength);
+      MobiFragment? firstFragment =
+          MobiFragment.create(BigInt.from(0), fragBuffer, BigInt.from(0));
+      MobiFragment currFragment = firstFragment;
+      while (fragmentsCount-- != 0) {
+        entry = rawml.frag!.entries[j];
+        int insertPosition = int.parse(entry.label);
+        if (insertPosition < currPosition) {
+          throw MobiInvalidDataException("Invalid fragment position");
+        }
+        int fileNumber = getIndxEntryTagValue(entry, 3, 0);
+        if (fileNumber != i) {
+          throw MobiInvalidDataException(
+              "SKEL part number and fragment sequence number don't match");
+        }
+        int fragLength = getIndxEntryTagValue(entry, 6, 1);
+        insertPosition -= currPosition;
+        if (skelLength < insertPosition) {
+          insertPosition = skelLength;
+        }
+        var fragBuffer = buf.getRaw(fragLength);
+        currFragment = currFragment.insert(BigInt.from(insertPosition),
+            fragBuffer, BigInt.from(fragLength), insertPosition);
+        skelLength += fragLength;
+        j++;
+      }
+      Uint8List skelText = Uint8List(0);
+      while (firstFragment != null) {
+        if (firstFragment.fragment.isNotEmpty) {
+          skelText.addAll(firstFragment.fragment);
+        }
+        firstFragment = firstFragment.next;
+      }
+      if (i > 0) {
+        curr!.next = MobiPart();
+        curr = curr.next;
+      }
+      curr!.uid = i;
+      curr.size = skelLength;
+      curr.data = skelText;
+      curr.fileType = MobiFileType.html;
+      curr.next = null;
+      currPosition += skelLength;
+      i++;
+    }
+  }
+
+  void reconstructLinks(MobiRawml rawml) {
+    if (isRawmlKf8(rawml)) {
+
+    }
+  }
+
+  void reconstructLinksKf8(MobiRawml rawml) {
+    
   }
 
   Uint8List processReplica(Uint8List text, int length) {
@@ -866,4 +1009,74 @@ class MobiPtagx {
   int tagValueCount = 0;
   int valueCount = 0;
   int valueBytes = 0;
+}
+
+class MobiFragment {
+  BigInt rawOffset = BigInt.from(0);
+  Uint8List fragment = Uint8List(0);
+  BigInt size = BigInt.from(0);
+  MobiFragment? next;
+
+  MobiFragment();
+  MobiFragment.create(this.rawOffset, this.fragment, this.size);
+
+  MobiFragment insert(
+      BigInt rawOffset, Uint8List data, BigInt size, int offset) {
+    final SIZEMAX = BigInt.parse("18446744073709551615");
+    MobiFragment? curr = this;
+    MobiFragment? prev;
+    while (curr != null) {
+      if (curr.rawOffset != SIZEMAX &&
+          curr.rawOffset <= BigInt.from(offset) &&
+          curr.rawOffset + curr.size >= BigInt.from(offset)) {
+        break;
+      }
+      prev = curr;
+      curr = curr.next;
+    }
+    if (curr == null) {
+      throw MobiInvalidDataException("Offset not found");
+    }
+    MobiFragment newFrag = MobiFragment.create(rawOffset, data, size);
+    MobiFragment newFrag2 = MobiFragment();
+    if (curr.rawOffset == BigInt.from(offset)) {
+      if (prev != null) {
+        prev.next = newFrag;
+        newFrag.next = curr;
+      } else {
+        MobiFragment temp = curr;
+        curr.rawOffset = newFrag.rawOffset;
+        curr.fragment = newFrag.fragment;
+        curr.size = newFrag.size;
+        curr.next = newFrag;
+        newFrag.rawOffset = temp.rawOffset;
+        newFrag.fragment = temp.fragment;
+        newFrag.size = temp.size;
+        newFrag.next = temp.next;
+        return curr;
+      }
+    } else if (curr.rawOffset + curr.size == BigInt.from(offset)) {
+      newFrag.next = curr.next;
+      curr.next = newFrag;
+    } else {
+      var relOffset = BigInt.from(offset) - curr.rawOffset;
+      newFrag2.next = curr.next;
+      newFrag2.size = curr.size - relOffset;
+      newFrag2.rawOffset = curr.rawOffset;
+      newFrag2.fragment = curr.fragment.sublist(relOffset.toInt());
+      curr.next = newFrag;
+      curr.size = relOffset;
+      newFrag.next = newFrag2;
+    }
+    if (rawOffset != SIZEMAX) {
+      curr = newFrag.next;
+      while (curr != null) {
+        if (curr.rawOffset != SIZEMAX) {
+          curr.rawOffset += newFrag.size;
+        }
+        curr = curr.next;
+      }
+    }
+    return newFrag;
+  }
 }
