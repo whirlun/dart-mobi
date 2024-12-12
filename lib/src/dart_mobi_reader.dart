@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:math' show min;
 
 import 'package:dart_mobi/src/dart_mobi_encryption.dart';
+import 'package:dart_mobi/src/dart_mobi_rawml.dart';
 import 'package:dart_mobi/src/dart_mobi_utils.dart';
 
 import 'dart_mobi_data.dart';
@@ -314,6 +315,41 @@ class DartMobiReader {
     return header;
   }
 
+  static MobiFdst readFdst(MobiData data) {
+    var fdst = MobiFdst();
+    final fdstRecordNumber = getFdstRecordNumber(data);
+    if (fdstRecordNumber == mobiNotSet) {
+      throw MobiInvalidDataException("FDST record number not found");
+    }
+    final fdstRecord =
+        getRecordBySeqNumber(data.mobiPdbRecord!, fdstRecordNumber);
+    if (fdstRecord == null) {
+      throw MobiInvalidDataException("FDST record not found");
+    }
+    var buffer = MobiBuffer(fdstRecord.data!, 0);
+    final fdstMagic = buffer.getString(4);
+    final offset = buffer.getInt32();
+    final sectionCount = buffer.getInt32();
+    if (fdstMagic != "FDST" ||
+        sectionCount <= 1 ||
+        sectionCount != data.mobiHeader?.fdstSectionCount ||
+        offset != 12) {
+      throw MobiInvalidDataException(
+          "FDST Parse Error, Magic: $fdstMagic, Section Count: $sectionCount, Data Offset: $offset");
+    }
+    if (buffer.maxlen - buffer.offset < sectionCount * 8) {
+      throw MobiInvalidDataException("Record FDST too short");
+    }
+    fdst.fdstSectionCount = sectionCount;
+    fdst.fdstSectionStarts = List.filled(sectionCount, 0);
+    fdst.fdstSectionEnds = List.filled(sectionCount, 0);
+    for (int i = 0; i < sectionCount; i++) {
+      fdst.fdstSectionStarts[i] = buffer.getInt32();
+      fdst.fdstSectionEnds[i] = buffer.getInt32();
+    }
+    return fdst;
+  }
+
   static MobiPdbRecord? getRecordBySeqNumber(
       MobiPdbRecord record, int seqNumber) {
     MobiPdbRecord? curr = record;
@@ -429,6 +465,19 @@ class MobiBuffer {
     return val;
   }
 
+  int getInt32Le() {
+    if (offset + 4 > maxlen) {
+      throw MobiBufferOverflowException();
+    }
+
+    final val = data[offset] |
+        data[offset + 1] << 8 |
+        data[offset + 2] << 16 |
+        data[offset + 3] << 24;
+    offset += 4;
+    return val;
+  }
+
   void seek(int diff, [bool set = false]) {
     if (set) {
       offset = diff;
@@ -482,5 +531,103 @@ class MobiBuffer {
     offset = backward ? offset - byteCount : offset + byteCount;
 
     return (len + byteCount, val);
+  }
+
+  void add8(int data) {
+    if (offset + 1 > maxlen) {
+      throw MobiBufferOverflowException();
+    }
+    this.data[offset] = data;
+    offset++;
+  }
+
+  void move(int moveOffset, int len) {
+    int source = offset;
+    if (moveOffset >= 0) {
+      if (offset + moveOffset + len > maxlen) {
+        throw MobiBufferOverflowException();
+      }
+      source += moveOffset;
+    } else {
+      moveOffset = -moveOffset;
+      if (offset < moveOffset || offset + len > maxlen) {
+        throw MobiBufferOverflowException();
+      }
+      source -= offset;
+    }
+
+    data.setRange(offset, offset + len, data.getRange(source, source + len));
+    offset += len;
+  }
+
+  void setPos(int pos) {
+    if (pos <= maxlen) {
+      offset = pos;
+    } else {
+      throw MobiBufferOverflowException();
+    }
+  }
+
+  void copy(MobiBuffer dest, int len) {
+    if (offset + len > maxlen) {
+      throw MobiBufferOverflowException();
+    }
+
+    if (dest.offset + len > dest.maxlen) {
+      throw MobiBufferOverflowException();
+    }
+
+    dest.data.setRange(
+        dest.offset, dest.offset + len, data.getRange(offset, offset + len));
+    dest.offset += len;
+    offset += len;
+  }
+
+  // get Int64 value but padding 0 if the buffer data is shorter
+  // offset will increase 4 bytes so each call will have 4 bytes overlap
+  int fillInt64() {
+    int val = 0;
+    int i = 8;
+    int bytesLeft = maxlen - offset;
+    int p = offset;
+    while (i-- != 0 && bytesLeft-- != 0) {
+      val |= data[p] << (i * 8);
+      p++;
+    }
+    offset += 4;
+    return val;
+  }
+
+  void addRaw(Uint8List data, int len) {
+    if (offset + len > maxlen) {
+      throw MobiBufferOverflowException();
+    }
+    data.setRange(offset, offset + len, data.getRange(0, len));
+  }
+
+  Uint8List getRaw(int len) {
+    return getStringAsByte(len);
+  }
+
+  bool matchMagic(String magic) {
+    final magicLength = magic.length;
+    if (offset + magicLength > maxlen) {
+      return false;
+    }
+    if (data.sublist(offset, offset + magicLength) == magic.codeUnits) {
+      return true;
+    }
+    return false;
+  }
+
+  bool matchMagicOffset(String magic, int offset) {
+    bool match = false;
+    if (offset < maxlen) {
+      final savedOffset = this.offset;
+      this.offset = offset;
+      match = matchMagic(magic);
+      this.offset = savedOffset;
+    }
+    return match;
   }
 }

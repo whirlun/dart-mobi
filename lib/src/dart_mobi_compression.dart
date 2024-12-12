@@ -8,10 +8,11 @@ import 'package:dart_mobi/src/dart_mobi_reader.dart';
 import 'package:dart_mobi/src/dart_mobi_utils.dart';
 
 class CompressionUtils {
-  static String decompressContent(MobiData data) {
+  static Uint8List decompressContent(MobiData data) {
     if (EncryptionUtils.isEncrypted(data) && !EncryptionUtils.hasDrmKey(data)) {
       throw MobiFileEncryptedException();
     }
+    Uint8List res = Uint8List(0);
 
     int offset = getKf8Offset(data);
     if (data.record0header != null ||
@@ -68,7 +69,7 @@ class CompressionUtils {
         curr = curr.next;
         continue;
       }
-
+      Uint8List decompressed;
       final recordSize = curr.size! - extraSize;
       switch (compressionType) {
         case compressionNone:
@@ -76,10 +77,26 @@ class CompressionUtils {
             throw MobiInvalidDataException("Record too Large $recordSize");
           }
 
+          decompressed = curr.data!;
           decompressedSize = recordSize;
-          if (data.mobiHeader != null && getFileVersion(data) <= 3) {}
+          if (data.mobiHeader != null && getFileVersion(data) <= 3) {
+            decompressedSize = removeZeros(decompressed);
+          }
+        case compressionPalmDoc:
+          final out = decompressLz77(curr.data!, decompressedSize);
+          decompressedSize = out.offset;
+          decompressed = out.data;
+        case compressionHuffCdic:
+          final out = decompressHuffman(curr.data!, decompressedSize, huffcdic);
+          decompressedSize = out.offset;
+          decompressed = out.data;
+        default:
+          throw MobiInvalidDataException("Unknown Compression Type");
       }
+      curr = curr.next;
+      res = res + decompressed as Uint8List;
     }
+    return res;
   }
 
   static void parseHuffdic(MobiData data, MobiHuffCdic huffcdic) {
@@ -202,6 +219,103 @@ class CompressionUtils {
         throw MobiInvalidDataException("CDIC Dictionary Data too Short");
       }
       huffcdic.symbols[n] = record.data!.sublist(cdicHeaderLen);
+    }
+  }
+
+  static MobiBuffer decompressLz77(Uint8List data, int decompressedSize) {
+    final buffer = MobiBuffer(data, 0);
+    final outBuffer =
+        MobiBuffer(Uint8List.fromList(List.filled(decompressedSize, 0)), 0);
+    while (buffer.offset < buffer.maxlen) {
+      var byte = buffer.getInt8();
+      if (byte >= 0xc0) {
+        outBuffer.add8(32);
+        outBuffer.add8(byte ^ 0x80);
+      } else if (byte >= 0x80) {
+        int next = buffer.getInt8();
+        int distance = ((byte << 8) | next >> 3) & 0x7ff;
+        int length = (next & 0x7) + 3;
+        while (length-- != 0) {
+          outBuffer.move(-distance, 1);
+        }
+      } else if (byte >= 0x09) {
+        outBuffer.add8(byte);
+      } else if (byte >= 0x01) {
+        buffer.copy(outBuffer, byte);
+      } else {
+        buffer.add8(byte);
+      }
+    }
+    return outBuffer;
+  }
+
+  static MobiBuffer decompressHuffman(
+      Uint8List data, int decompressedSize, MobiHuffCdic huffcdic) {
+    final buffer = MobiBuffer(data, 0);
+    final outBuffer =
+        MobiBuffer(Uint8List.fromList(List.filled(decompressedSize, 0)), 0);
+    decompressHuffmanInternal(buffer, outBuffer, huffcdic, 0);
+    return outBuffer;
+  }
+
+  static void decompressHuffmanInternal(
+      MobiBuffer inBuf, MobiBuffer outBuf, MobiHuffCdic huffcdic, int depth) {
+    if (depth > huffmanMaxDepth) {
+      throw MobiInvalidDataException("Too Many Levels of Recursion");
+    }
+
+    int bitcount = 32;
+    int bitsLeft = inBuf.maxlen * 8;
+    int codeLength = 0;
+    int buffer = inBuf.fillInt64();
+    while (true) {
+      if (bitcount <= 0) {
+        bitcount += 32;
+        buffer = inBuf.fillInt64();
+      }
+      var code = (buffer >> bitcount) & 0xffffffff;
+      var t1 = huffcdic.table1[code >> 24];
+      codeLength = t1 & 0x1f;
+      int maxCode = ((t1 >> 8) + 1) << (32 - codeLength) - 1;
+      if ((t1 & 0x80) == 0) {
+        while (code < huffcdic.minCodeTable[codeLength]) {
+          if (++codeLength >= huffCodeTableSize) {
+            throw MobiInvalidDataException(
+                "Wrong Offset to Mincode Table: $codeLength");
+          }
+        }
+        maxCode = huffcdic.maxCodeTable[codeLength];
+      }
+
+      bitcount -= codeLength;
+      bitsLeft -= codeLength;
+      if (bitsLeft < 0) {
+        break;
+      }
+
+      int index = (maxCode - code) >> (32 - codeLength);
+
+      int cdicIndex = (index >> huffcdic.codeLength);
+      if (index >= huffcdic.indexCount) {
+        throw MobiInvalidDataException("Wrong Symbol Offsets Index: $index");
+      }
+
+      int offset = huffcdic.symbolOffsets[index];
+      var symbolLength = huffcdic.symbols[cdicIndex][offset] << 8 |
+          huffcdic.symbols[cdicIndex][offset + 1];
+      int isDecompressed = symbolLength >> 15;
+      symbolLength &= 0x7fff;
+      if (isDecompressed != 0) {
+        outBuf.addRaw(
+            Uint8List.fromList(
+                huffcdic.symbols[cdicIndex].getRange(0, offset + 2).toList()),
+            symbolLength);
+      } else {
+        var symBuf = MobiBuffer(
+            Uint8List.fromList(huffcdic.symbols[cdicIndex]), offset + 2);
+        symBuf.maxlen = symbolLength;
+        decompressHuffmanInternal(outBuf, symBuf, huffcdic, depth + 1);
+      }
     }
   }
 
