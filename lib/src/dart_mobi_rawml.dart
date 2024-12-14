@@ -67,8 +67,13 @@ extension RawmlParser on MobiData {
     }
     reconstructParts(rawml);
     if (reconstruct) {
-
+      reconstructLinks(rawml);
+      if (mobiIsKf8(this)) {}
     }
+    if (getEncoding(this) == MobiEncoding.CP1252) {
+      // convert to utf8
+    }
+    return rawml;
   }
 
   parseIndex(MobiData data, MobiIndx indx, int indxRecordNumber) {
@@ -731,12 +736,332 @@ extension RawmlParser on MobiData {
 
   void reconstructLinks(MobiRawml rawml) {
     if (isRawmlKf8(rawml)) {
-
+      reconstructLinksKf8(rawml);
+    } else {
+      reconstructLinksKf7(rawml);
     }
   }
 
+  void reconstructLinksKf7(MobiRawml rawml) {}
+
   void reconstructLinksKf8(MobiRawml rawml) {
-    
+    NewData? partData;
+    NewData? curData;
+    List<MobiPart> parts = [rawml.markup!, rawml.flow!.next!];
+    for (int i = 0; i < parts.length; i++) {
+      MobiPart? part = parts[i];
+      while (part != null) {
+        if (part.data == null || part.size == 0) {
+          part = part.next;
+          continue;
+        }
+        Uint8List dataIn = part.data!;
+        int dataInPtr = 0;
+        MobiFragment? first;
+        MobiFragment cur = MobiFragment();
+        int partSize = 0;
+        MobiAttrType prefAttr = MobiAttrType.attrId;
+        while (true) {
+          var result = searchLinksKf8(dataIn, 0, dataIn.length, part.fileType);
+          if (result.start == null) {
+            break;
+          }
+          var value = result.value;
+          var dataCur = result.start!;
+          int size = dataCur;
+          var target = "kindle:pos:fid:";
+          String link = "";
+          if (value.contains(target)) {
+            (link, prefAttr) = posfidToLink(
+                rawml, Uint8List.fromList(target.codeUnits), prefAttr);
+          } else if (value.contains("kindle:flow:")) {
+            target = "kindle:flow";
+            link = flowToLink(rawml, Uint8List.fromList(target.codeUnits));
+          } else if (value.contains("kindle:embed:")) {
+            target = "kindle:embed";
+            link = embedToLink(rawml, Uint8List.fromList(target.codeUnits));
+          }
+          if (target != "" && link != "") {
+            cur = cur.add(BigInt.from(dataInPtr), dataIn, BigInt.from(size));
+            first ??= cur;
+            partSize += cur.size.toInt();
+            cur = cur.add(
+                BigInt.parse("18446744073709551615"),
+                Uint8List.fromList(
+                    (result.isUrl ? link.substring(1, link.length - 1) : link)
+                        .codeUnits),
+                BigInt.from(result.isUrl ? link.length - 2 : link.length));
+            partSize += cur.size.toInt();
+            dataIn = dataIn.sublist(result.end!);
+            dataInPtr = result.end!;
+          }
+        }
+        if (first != null) {
+          if (part.size < dataInPtr) {
+            throw MobiInvalidDataException("Invalid part size");
+          }
+          int size = part.size - dataInPtr;
+          cur = cur.add(BigInt.from(dataInPtr), dataIn, BigInt.from(size));
+          partSize += cur.size.toInt();
+          if (curData == null) {
+            curData = NewData();
+            partData = curData;
+          } else {
+            curData.next = NewData();
+            curData = curData.next;
+          }
+          curData!.partGroup = i;
+          curData.partUid = part.uid;
+          curData.list = first;
+          curData.size = partSize;
+        }
+        part = part.next;
+      }
+    }
+    for (int i = 0; i < 2; i++) {
+      MobiPart? part = parts[i];
+      while (part != null) {
+        if (partData != null &&
+            part.uid == partData.partUid &&
+            i == partData.partGroup) {
+          MobiFragment? fragData = partData.list;
+          Uint8List dataOut = Uint8List(0);
+          while (fragData != null) {
+            dataOut.addAll(fragData.fragment);
+            fragData = fragData.next;
+          }
+          part.data = dataOut;
+          part.size = partData.size;
+          partData = partData.next;
+        }
+        part = part.next;
+      }
+    }
+  }
+
+  (String, MobiAttrType) posfidToLink(
+      MobiRawml rawml, Uint8List value, MobiAttrType prefAttr) {
+    if (value.length < "kindle:pos:fid:0000:off:0000000000".length) {
+      return ("", prefAttr);
+    }
+    int valuePtr = "kindle:pos:fid:".length;
+    if (value[valuePtr + 4] != ":".codeUnitAt(0)) {
+      return ("", prefAttr);
+    }
+    Uint8List strFid = value.sublist(valuePtr, valuePtr + 4);
+    valuePtr += "0001:off:".length;
+    Uint8List strOff = value.sublist(valuePtr, valuePtr + 10);
+    int posOff = base32Decode(strOff);
+    int posFid = base32Decode(strFid);
+    var (partId, id, prefAttr2) =
+        getIdByPosOff(rawml, posFid, posOff, prefAttr);
+    if (posOff != 0) {
+      var link = "\"part${partId.toString().padLeft(5, '0')}.html#$id\"";
+      if (link.length > mobiAttrValueMaxSize) {
+        return ("", prefAttr2);
+      } else {
+        return (link, prefAttr2);
+      }
+    } else {
+      return ("\"part${partId.toString().padLeft(5, '0')}.html\"", prefAttr2);
+    }
+  }
+
+  String flowToLink(MobiRawml rawml, Uint8List value) {
+    if (value.length < "kindle:flow:0000?mime=".length) {
+      return "";
+    }
+    int valuePtr = "kindle:flow:".length;
+    if (value[valuePtr + 4] != "?".codeUnits[0]) {
+      return "";
+    }
+    var strFid = value.sublist(4, 8);
+    MobiPart? flow = getFlowByFid(rawml, strFid);
+    if (flow == null) {
+      return "";
+    }
+    MobiFileMeta meta = getFileMetaByType(flow.fileType);
+    String extension = meta.extension;
+    return "\"flow${flow.uid.toString().padLeft(5, "0")}.$extension\"";
+  }
+
+  String embedToLink(MobiRawml rawml, Uint8List value) {
+    int valuePtr = 0;
+    while (value[valuePtr] != '"'.codeUnits[0] ||
+        value[valuePtr] != "'".codeUnits[0] ||
+        value[valuePtr] != ' '.codeUnits[0]) {
+      valuePtr++;
+    }
+    if (value.length < "kindle:embed:0000".length) {
+      return "";
+    }
+    valuePtr == "kindle:embed:".length;
+    var strFid = value.sublist(valuePtr, valuePtr + 4);
+    var partId = base32Decode(strFid);
+    partId--;
+    MobiPart? resource = getResourceByUid(rawml, partId);
+    if (resource == null) {
+      return "";
+    }
+    MobiFileMeta meta = getFileMetaByType(resource.fileType);
+    String extension = meta.extension;
+    return "\"resource${partId.toString().padLeft(5, "0")}.$extension\"";
+  }
+
+  MobiPart? getFlowByFid(MobiRawml rawml, Uint8List fid) {
+    int partId = base32Decode(fid);
+    return getFlowByUid(rawml, partId);
+  }
+
+  MobiPart? getFlowByUid(MobiRawml rawml, int uid) {
+    MobiPart? part = rawml.flow;
+    while (part != null) {
+      if (part.uid == uid) {
+        return part;
+      }
+      part = part.next;
+    }
+    return null;
+  }
+
+  (int, String, MobiAttrType) getIdByPosOff(
+      MobiRawml rawml, int posFid, int posOff, MobiAttrType prefAttr) {
+    var (offset, fileNumber) = getOffSetByPosOff(rawml, posFid, posOff);
+    MobiPart html = getPartByUid(rawml, fileNumber);
+    var (id, prefAttr2) = getIdByOffset(html, offset, prefAttr);
+    return (fileNumber, id, prefAttr2);
+  }
+
+  (int, int) getOffSetByPosOff(MobiRawml rawml, int posFid, int posOff) {
+    if (rawml.frag == null || rawml.skel == null) {
+      throw MobiInvalidDataException("No fragment or skel data");
+    }
+    if (posFid >= rawml.skel!.entriesCount) {
+      throw MobiInvalidDataException("Entry for $posFid does not exist");
+    }
+    MobiIndexEntry entry = rawml.skel!.entries[posFid];
+    int offset = int.parse(entry.label);
+    int fileNr = getIndxEntryTagValue(entry, 3, 0);
+    if (fileNr >= rawml.skel!.entriesCount) {
+      throw MobiInvalidDataException("Entry for $fileNr does not exist");
+    }
+    MobiIndexEntry skelEntry = rawml.skel!.entries[fileNr];
+    int skelPos = getIndxEntryTagValue(skelEntry, 6, 0);
+    offset -= skelPos;
+    offset += posOff;
+    return (offset, fileNr);
+  }
+
+  (String, MobiAttrType) getIdByOffset(
+      MobiPart html, int offset, MobiAttrType prefAttr) {
+    if (offset > html.size) {
+      throw MobiInvalidDataException("Offset $offset is out of range");
+    }
+    Uint8List data = html.data!.sublist(offset);
+    int length = html.size - offset;
+    var (off, id) = getAttributeValue(data, length, prefAttr.toString(), true);
+    if (off == 2147483647) {
+      final optAttr = (prefAttr == MobiAttrType.attrId)
+          ? MobiAttrType.attrName
+          : MobiAttrType.attrId;
+      var (off, id) = getAttributeValue(data, length, optAttr.toString(), true);
+      if (off == 2147483647) {
+        return ("", prefAttr);
+      } else {
+        return (id, optAttr);
+      }
+    }
+    return (id, prefAttr);
+  }
+
+  (int, String) getAttributeValue(
+      Uint8List data, int size, String attribute, bool onlyQuoted) {
+    int length = size;
+    int attrLength = attribute.length;
+    String value = "";
+    if (attrLength > attrNameMaxSize) {
+      return (2147483647, "");
+    }
+    String attr = "$attribute=";
+    attrLength++;
+    if (size < attrLength) {
+      return (2147483647, "");
+    }
+    int dataPtr = 0;
+    int lastBorder = 0;
+    do {
+      if (data[dataPtr] == '<'.codeUnits[0] ||
+          data[dataPtr] == '>'.codeUnits[0]) {
+        lastBorder = data[dataPtr];
+      }
+      if (length > attrLength + 1 &&
+          data.sublist(dataPtr, attrLength) == attr.codeUnits) {
+        int offset = size - length;
+        if (lastBorder == '>'.codeUnits[0]) {
+          dataPtr += attrLength;
+          length -= attrLength - 1;
+          continue;
+        }
+        if (offset > 0) {
+          if (data.last != '<'.codeUnits[0] && data.last != ' '.codeUnits[0]) {
+            dataPtr += attrLength;
+            length -= attrLength - 1;
+            continue;
+          }
+        }
+        dataPtr += attrLength;
+        length -= attrLength;
+        int separator = 0;
+        if (data[dataPtr] != '\''.codeUnits[0] &&
+            data[dataPtr] != '"'.codeUnits[0]) {
+          if (onlyQuoted) {
+            continue;
+          }
+          separator = ' '.codeUnits[0];
+        } else {
+          separator = data[dataPtr];
+          dataPtr++;
+          length--;
+        }
+        int j = 0;
+        for (j = 0;
+            j < mobiAttrValueMaxSize &&
+                length != 0 &&
+                data[dataPtr] != separator &&
+                data[dataPtr] != '>'.codeUnits[0];
+            j++) {
+          value += String.fromCharCode(data[dataPtr]);
+          length--;
+        }
+        if (length != 0 &&
+            data[dataPtr - 1] == '/'.codeUnits[0] &&
+            data[dataPtr] == '>'.codeUnits[0]) {
+          value = value.substring(0, value.length - 1);
+        }
+        return (size - length - j, value);
+      }
+      dataPtr++;
+    } while (--length != 0);
+    return (2147483647, "");
+  }
+
+  MobiPart getPartByUid(MobiRawml rawml, int uid) {
+    if (rawml.markup == null) {
+      throw MobiInvalidDataException("No markup data");
+    }
+    MobiPart? curr = rawml.markup;
+    while (curr != null) {
+      if (curr.uid == uid) {
+        return curr;
+      }
+      curr = curr.next;
+    }
+    throw MobiInvalidDataException("Part with uid $uid not found");
+  }
+
+  MobiResult searchLinksKf8(
+      Uint8List data, int start, int end, MobiFileType type) {
+    return findAttrValue(data, start, end, type, "kindle:");
   }
 
   Uint8List processReplica(Uint8List text, int length) {
@@ -1020,6 +1345,14 @@ class MobiFragment {
   MobiFragment();
   MobiFragment.create(this.rawOffset, this.fragment, this.size);
 
+  MobiFragment add(BigInt rawOffset, Uint8List fragment, BigInt size) {
+    next = MobiFragment();
+    next!.rawOffset = rawOffset;
+    next!.fragment = fragment;
+    next!.size = size;
+    return next!;
+  }
+
   MobiFragment insert(
       BigInt rawOffset, Uint8List data, BigInt size, int offset) {
     final SIZEMAX = BigInt.parse("18446744073709551615");
@@ -1079,4 +1412,28 @@ class MobiFragment {
     }
     return newFrag;
   }
+}
+
+class NewData {
+  int partGroup = 0;
+  int partUid = 0;
+  MobiFragment? list;
+  int size = 0;
+  NewData? next;
+}
+
+enum MobiAttrType {
+  attrId,
+  attrName;
+
+  @override
+  String toString() {
+    return this == attrId ? "id" : "name";
+  }
+}
+
+class MobiFileMeta {
+  MobiFileType? fileType;
+  String extension = "";
+  String mimeType = "";
 }

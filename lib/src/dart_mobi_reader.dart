@@ -37,7 +37,7 @@ class DartMobiReader {
         mobiData.next = MobiData();
         mobiData.next!.pdbHeader = mobiData.pdbHeader;
         mobiData.next!.mobiPdbRecord = mobiData.mobiPdbRecord;
-        mobiData.next!.drm = mobiData.next!.drm;
+        mobiData.next!.drm = mobiData.drm;
         mobiData.next!.next = mobiData;
         mobiData.next!.record0header = await readRecord0Header(mobiData.next!,
             mobiData.next!.mobiPdbRecord!, boundaryRecNumber + 1);

@@ -1,3 +1,5 @@
+import 'package:dart_mobi/src/dart_mobi_rawml.dart';
+
 const palmdbNameLength = 32;
 const record0HeaderLength = 16;
 const compressionNone = 1;
@@ -48,3 +50,21 @@ const cncxRecordMaxCnt = 0xf;
 const indxNameSizeMax = 0xff;
 const indxLabelSizeMax = 1000;
 const indxTagValuesMax = 100;
+const attrNameMaxSize = 150;
+const mobiFileMeta = {
+  MobiFileType.html: {"ext": "html", "mime": "application/xhtml+xml"},
+  MobiFileType.css: {"ext": "css", "mime": "text/css"},
+  MobiFileType.svg: {"ext": "svg", "mime": "image/svg+xml"},
+  MobiFileType.jpg: {"ext": "jpg", "mime": "image/jpeg"},
+  MobiFileType.gif: {"ext": "gif", "mime": "image/gif"},
+  MobiFileType.png: {"ext": "png", "mime": "image/png"},
+  MobiFileType.bmp: {"ext": "bmp", "mime": "image/bmp"},
+  MobiFileType.otf: {"ext": "otf", "mime": "application/vnd.ms-opentype"},
+  MobiFileType.ttf: {"ext": "ttf", "mime": "application/x-font-truetype"},
+  MobiFileType.mp3: {"ext": "mp3", "mime": "audio/mpeg"},
+  MobiFileType.mpg: {"ext": "mpg", "mime": "video/mpeg"},
+  MobiFileType.pdf: {"ext": "pdf", "mime": "application/pdf"},
+  MobiFileType.opf: {"ext": "opf", "mime": "application/oebps-package+xml"},
+  MobiFileType.ncx: {"ext": "ncx", "mime": "application/x-dtbncx+xml"},
+  MobiFileType.unknown: {"ext": "dat", "mime": "application/unknown"},
+};

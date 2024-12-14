@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "mobi.h": "c",
+        "stdlib.h": "c"
+    }
+}

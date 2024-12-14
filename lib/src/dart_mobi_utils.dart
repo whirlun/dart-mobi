@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
-
+import 'dart:math';
 import 'package:dart_mobi/src/dart_mobi_const.dart';
 import 'package:dart_mobi/src/dart_mobi_data.dart';
 import 'package:dart_mobi/src/dart_mobi_exception.dart';
@@ -134,6 +134,57 @@ bool existsFdst(MobiData data) {
     }
   }
   return false;
+}
+
+bool existsInfl(MobiData data) {
+  if (data.mobiHeader == null) {
+    return false;
+  }
+  if (data.mobiHeader?.inflectionIndex != null &&
+      data.mobiHeader!.inflectionIndex != mobiNotSet) {
+    return true;
+  }
+  return false;
+}
+
+bool existsGuideIndx(MobiData data) {
+  if (data.mobiHeader == null) {
+    return false;
+  }
+  if (data.mobiHeader?.guideIndex == null ||
+      data.mobiHeader!.guideIndex == mobiNotSet) {
+    return false;
+  }
+  return true;
+}
+
+bool existsOrth(MobiData data) {
+  if (data.mobiHeader == null) {
+    return false;
+  }
+  if (data.mobiHeader?.orthographicIndex == null ||
+      data.mobiHeader!.orthographicIndex == mobiNotSet) {
+    return false;
+  }
+  return true;
+}
+
+bool isDictionary(MobiData data) {
+  if (getFileVersion(data) < 8 && existsOrth(data)) {
+    return true;
+  }
+  return false;
+}
+
+bool existsNcx(MobiData data) {
+  if (data.mobiHeader == null) {
+    return false;
+  }
+  if (data.mobiHeader?.ncxIndex == null ||
+      data.mobiHeader!.ncxIndex == mobiNotSet) {
+    return false;
+  }
+  return true;
 }
 
 bool existsSkelIndx(MobiData data) {
@@ -327,6 +378,75 @@ Uint8List decodeVideoResource(MobiPart part) {
   return buffer.data.sublist(buffer.offset);
 }
 
+int base32Decode(Uint8List encoded) {
+  int i = 0;
+  while (encoded[i] == '0'.codeUnits[0]) {
+    i++;
+  }
+  int encodedLength = encoded.length - i;
+  if (encodedLength > 6) {
+    throw MobiInvalidDataException("base32 encoded number too big");
+  }
+  final base = 32;
+  int len = encodedLength;
+  int decoded = 0;
+  int value = 0;
+  for (int j = i; j < encoded.length; j++) {
+    int c = encoded[j];
+    if (c >= 'A'.codeUnits[0] && c <= 'V'.codeUnits[0]) {
+      value = c - 'A'.codeUnits[0] + 10;
+    } else if (c >= '0'.codeUnits[0] && c <= '9'.codeUnits[0]) {
+      value = c - '0'.codeUnits[0];
+    } else {
+      throw MobiInvalidDataException("Invalid character in base32 encoded");
+    }
+    decoded += (value * pow(base, --len)).toInt();
+  }
+  return decoded;
+}
+
+MobiPart? getResourceByUid(MobiRawml rawml, int uid) {
+  if (rawml.resources == null) {
+    return null;
+  }
+  MobiPart? curr = rawml.resources;
+  while (curr != null) {
+    if (curr.uid == uid) {
+      return curr;
+    }
+    curr = curr.next;
+  }
+  return null;
+}
+
+MobiFileMeta getFileMetaByType(MobiFileType type) {
+  MobiFileMeta meta = MobiFileMeta();
+  if (!mobiFileMeta.containsKey(type)) {
+    meta.fileType = MobiFileType.unknown;
+    meta.extension = mobiFileMeta[MobiFileType.unknown]!["ext"]!;
+    meta.mimeType = mobiFileMeta[MobiFileType.unknown]!["mime"]!;
+  }
+  meta.fileType = type;
+  meta.extension = mobiFileMeta[type]!["ext"]!;
+  meta.mimeType = mobiFileMeta[type]!["mime"]!;
+  return meta;
+}
+
+bool mobiIsKf8(MobiData data) {
+  final version = getFileVersion(data);
+  if (version != mobiNotSet && version >= 8) {
+    return true;
+  }
+  return false;
+}
+
+MobiEncoding getEncoding(MobiData data) {
+  if (data.mobiHeader?.encoding == MobiEncoding.UTF8) {
+    return MobiEncoding.UTF8;
+  }
+  return MobiEncoding.CP1252;
+}
+
 int ligatureToUtf16(int byte1, int byte2) {
   final uniReplacement = 0xfffd;
   int ligature = uniReplacement;
@@ -393,22 +513,263 @@ int ligtureToCp1252(int byte1, int byte2) {
 }
 
 const setBits = [
-    0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
-    1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
-    1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
-    2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-    1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
-    2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-    2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-    3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
-    1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
-    2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-    2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-    3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
-    2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-    3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
-    3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
-    4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8,];
+  0,
+  1,
+  1,
+  2,
+  1,
+  2,
+  2,
+  3,
+  1,
+  2,
+  2,
+  3,
+  2,
+  3,
+  3,
+  4,
+  1,
+  2,
+  2,
+  3,
+  2,
+  3,
+  3,
+  4,
+  2,
+  3,
+  3,
+  4,
+  3,
+  4,
+  4,
+  5,
+  1,
+  2,
+  2,
+  3,
+  2,
+  3,
+  3,
+  4,
+  2,
+  3,
+  3,
+  4,
+  3,
+  4,
+  4,
+  5,
+  2,
+  3,
+  3,
+  4,
+  3,
+  4,
+  4,
+  5,
+  3,
+  4,
+  4,
+  5,
+  4,
+  5,
+  5,
+  6,
+  1,
+  2,
+  2,
+  3,
+  2,
+  3,
+  3,
+  4,
+  2,
+  3,
+  3,
+  4,
+  3,
+  4,
+  4,
+  5,
+  2,
+  3,
+  3,
+  4,
+  3,
+  4,
+  4,
+  5,
+  3,
+  4,
+  4,
+  5,
+  4,
+  5,
+  5,
+  6,
+  2,
+  3,
+  3,
+  4,
+  3,
+  4,
+  4,
+  5,
+  3,
+  4,
+  4,
+  5,
+  4,
+  5,
+  5,
+  6,
+  3,
+  4,
+  4,
+  5,
+  4,
+  5,
+  5,
+  6,
+  4,
+  5,
+  5,
+  6,
+  5,
+  6,
+  6,
+  7,
+  1,
+  2,
+  2,
+  3,
+  2,
+  3,
+  3,
+  4,
+  2,
+  3,
+  3,
+  4,
+  3,
+  4,
+  4,
+  5,
+  2,
+  3,
+  3,
+  4,
+  3,
+  4,
+  4,
+  5,
+  3,
+  4,
+  4,
+  5,
+  4,
+  5,
+  5,
+  6,
+  2,
+  3,
+  3,
+  4,
+  3,
+  4,
+  4,
+  5,
+  3,
+  4,
+  4,
+  5,
+  4,
+  5,
+  5,
+  6,
+  3,
+  4,
+  4,
+  5,
+  4,
+  5,
+  5,
+  6,
+  4,
+  5,
+  5,
+  6,
+  5,
+  6,
+  6,
+  7,
+  2,
+  3,
+  3,
+  4,
+  3,
+  4,
+  4,
+  5,
+  3,
+  4,
+  4,
+  5,
+  4,
+  5,
+  5,
+  6,
+  3,
+  4,
+  4,
+  5,
+  4,
+  5,
+  5,
+  6,
+  4,
+  5,
+  5,
+  6,
+  5,
+  6,
+  6,
+  7,
+  3,
+  4,
+  4,
+  5,
+  4,
+  5,
+  5,
+  6,
+  4,
+  5,
+  5,
+  6,
+  5,
+  6,
+  6,
+  7,
+  4,
+  5,
+  5,
+  6,
+  5,
+  6,
+  6,
+  7,
+  5,
+  6,
+  6,
+  7,
+  6,
+  7,
+  7,
+  8,
+];
 
 int mobiBigCount(int byte) {
   return setBits[byte];

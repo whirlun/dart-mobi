@@ -29,3 +29,6 @@ doc/api/
 .DS_Store
 
 example/*.mobi
+example/*.epub
+example/*.azw3
+example/mobi_sample
