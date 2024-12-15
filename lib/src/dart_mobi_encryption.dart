@@ -30,6 +30,11 @@ class EncryptionUtils {
     return sum;
   }
 
+  static void initDrmKey(MobiData data, List<int> key) {
+    data.drm ??= MobiDrm();
+    data.drm!.key = key;
+  }
+
   static bool verifyDrmKey(String? pid) {
     final checkSum = checkSumDrmPid(pid);
     if (checkSum.toString() == pid?.substring(pidSize - 2)) {
@@ -55,6 +60,11 @@ class EncryptionUtils {
       // MOBI encryption V1 doesn't need PID
       pid = null;
     }
+    var key = getDrmKey(pid, data);
+    initDrmKey(data, key);
+    if (data.record0header!.encryptionType! > 1) {
+      addCookie(data, pid, 0, mobiNotSet);
+    }
   }
 
   static addCookie(MobiData data, String? pid, int from, int to) {
@@ -66,7 +76,6 @@ class EncryptionUtils {
       throw MobiInvalidParameterException(
           "cookiesCount must be less than vouchersCountMax");
     }
-
     var cookie = DrmCookie(pid, from, to);
     data.drm!.cookies.add(cookie);
     data.drm!.cookiesCount++;
@@ -204,7 +213,7 @@ class EncryptionUtils {
     }
   }
 
-  static List<int> getDrmKey(String pid, MobiData data) {
+  static List<int> getDrmKey(String? pid, MobiData data) {
     if (data.record0header?.encryptionType == mobiEncryptionV1) {
       return getMobiKeyV1(data);
     } else {
@@ -279,7 +288,7 @@ class EncryptionUtils {
   static List<int> decryptBuffer(
       Uint8List data, MobiData mobiData, int length) {
     final drm = mobiData.drm;
-    return decryptPk1(data, length, drm!.key!);
+    return decryptPk1(data, length, String.fromCharCodes(drm!.key!));
   }
 
   // port from mz_crc32 https://github.com/richgel999/miniz/blob/1ff82be7d67f5c2f8b5497f538eea247861e0717/miniz.c#L70
@@ -326,7 +335,7 @@ class DrmCookie {
 }
 
 class MobiDrm {
-  String? key;
+  List<int>? key;
   int cookiesCount = 0;
   List<DrmCookie> cookies = [];
 }
