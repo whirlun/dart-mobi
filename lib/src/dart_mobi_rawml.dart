@@ -18,7 +18,6 @@ extension RawmlParser on MobiData {
     int length = maxLen;
     MobiRawml rawml = MobiRawml();
     final rawRawml = getRawml(length);
-    print("rawml generated");
     if (existsFdst(this)) {
       if (mobiHeader?.fdstSectionCount != null &&
           mobiHeader!.fdstSectionCount! > 1) {
@@ -27,9 +26,7 @@ extension RawmlParser on MobiData {
     }
 
     reconstructFlow(rawml, rawRawml, length);
-    print("flow reconstructed");
     reconstructResources(this, rawml);
-    print("resources reconstructed");
     final offset = getKf8Offset(this);
     if (existsSkelIndx(this) && existsFragIndx(this)) {
       final indxRecordNumber = mobiHeader!.skeletonIndex! + offset;
@@ -37,7 +34,6 @@ extension RawmlParser on MobiData {
       parseIndex(this, skelMeta, indxRecordNumber);
       rawml.skel = skelMeta;
     }
-    print("skel index count ${rawml.skel?.entriesCount}");
     if (existsFragIndx(this)) {
       MobiIndx fragMeta = MobiIndx();
       final indxRecordNumber = mobiHeader!.fragmentIndex! + offset;
@@ -83,12 +79,10 @@ extension RawmlParser on MobiData {
   }
 
   parseIndex(MobiData data, MobiIndx indx, int indxRecordNumber) {
-    print("parsing index");
     MobiTagx tagx = MobiTagx();
     MobiOrdt ordt = MobiOrdt();
     var record = DartMobiReader.getRecordBySeqNumber(
         data.mobiPdbRecord!, indxRecordNumber);
-    print("get record for $indxRecordNumber");
     if (record == null) {
       throw MobiInvalidDataException("Index Record Not Found");
     }
@@ -112,7 +106,6 @@ extension RawmlParser on MobiData {
 
   void parseIndx(
       MobiPdbRecord indxRecord, MobiIndx indx, MobiTagx tagx, MobiOrdt ordt) {
-    print("parsing indx structure");
     MobiBuffer buf = MobiBuffer(indxRecord.data!, 0);
     final indxMagic = buf.getString(4);
     final headerLength = buf.getInt32();
@@ -129,7 +122,6 @@ extension RawmlParser on MobiData {
     if (entriesCount > indxRecordMaxCnt) {
       throw MobiInvalidDataException("Too Many Entries in Indx Record");
     }
-    print("Magic matched ${buf.matchMagicOffset('TAGX', headerLength)}");
     if (buf.matchMagicOffset("TAGX", headerLength) &&
         indx.totalEntriesCount == 0) {
       buf.maxlen = headerLength;
@@ -184,7 +176,6 @@ extension RawmlParser on MobiData {
       buf.maxlen = indxRecord.size!;
       buf.setPos(headerLength);
       parseTagx(buf, tagx);
-      print("tagx parsed");
       if (ordtEntriesCount > 0) {
         ordt.offsetsCount = ordtEntriesCount;
         ordt.type = ordtType;
@@ -222,7 +213,6 @@ extension RawmlParser on MobiData {
       buf.setPos(idxtOffset);
       MobiIdxt idxt = MobiIdxt();
       parseIdxt(buf, idxt, entriesCount);
-      print(entriesCount);
       if (entriesCount > 0) {
         int i = 0;
         indx.entries = List.generate(entriesCount, (int i) => MobiIndexEntry());
@@ -241,12 +231,10 @@ extension RawmlParser on MobiData {
     final entryLength = idxt.offsets[currNumber + 1] - idxt.offsets[currNumber];
     buf.setPos(idxt.offsets[currNumber]);
     int entryNumber = currNumber + entryOffset;
-    print(indx.totalEntriesCount);
     if (entryNumber >= indx.totalEntriesCount) {
       throw MobiInvalidDataException("Too Many Entries in Indx Record");
     }
     final maxlen = buf.maxlen;
-    print("offset ${buf.offset} entryLength $entryLength maxlen: $maxlen");
     if (buf.offset + entryLength > maxlen) {
       throw MobiInvalidDataException("Index Entry Too Long");
     }
@@ -297,7 +285,6 @@ extension RawmlParser on MobiData {
             }
             valueCount = value;
           }
-          print("ptgaxCount $ptagxCount i: $i");
           ptagx[ptagxCount].tag = tagx.tags[i].tag;
           ptagx[ptagxCount].tagValueCount = tagx.tags[i].valuesCount;
           ptagx[ptagxCount].valueCount = valueCount;
@@ -334,8 +321,6 @@ extension RawmlParser on MobiData {
         } else {
           indx.entries[entryNumber].tags[i].tagValues = [];
         }
-        print("tag value count parseIndexEntry: $tagValuesCount");
-        print("i: $i ptagx tag ${ptagx[i].tag}");
         indx.entries[entryNumber].tags[i].tagId = ptagx[i].tag;
         indx.entries[entryNumber].tags[i].tagValuesCount = tagValuesCount;
         indx.entries[entryNumber].tagsCount++;
@@ -498,7 +483,6 @@ extension RawmlParser on MobiData {
     int i = 0;
     while (i < entriesCount) {
       idxt.offsets.add(buf.getInt16());
-      print("buf offset ${buf.offset} idxt offset ${idxt.offsets[i]}");
       i++;
     }
     idxt.offsets.add(idxtOffset);
@@ -533,7 +517,6 @@ extension RawmlParser on MobiData {
   }
 
   void parseTagx(MobiBuffer buf, MobiTagx tagx) {
-    print("parse tagx");
     buf.seek(4);
     var tagxRecordLength = buf.getInt32();
     if (tagxRecordLength < 12) {
@@ -567,10 +550,7 @@ extension RawmlParser on MobiData {
 
   int getIndxEntryTagValue(MobiIndexEntry entry, int tagId, int tagIndex) {
     int i = 0;
-    print("entry tags count ${entry.tagsCount} tagid: $tagId");
     while (i < entry.tagsCount) {
-      print(
-          "tagId ${entry.tags[i].tagId} tag values count ${entry.tags[i].tagValues}");
       if (entry.tags[i].tagId == tagId) {
         if (tagIndex < entry.tags[i].tagValuesCount) {
           return entry.tags[i].tagValues[tagIndex];
@@ -639,7 +619,6 @@ extension RawmlParser on MobiData {
     var currRecord = DartMobiReader.getRecordBySeqNumber(
         data.mobiPdbRecord!, firstResSeqNumber);
     if (currRecord == null) {
-      print("First resource record not found. Skipping $firstResSeqNumber");
       return;
     }
     int i = 0;
@@ -705,7 +684,6 @@ extension RawmlParser on MobiData {
     int totalFragmentsCount = rawml.frag!.totalEntriesCount;
     while (i < rawml.skel!.entriesCount) {
       MobiIndexEntry entry = rawml.skel!.entries[i];
-      print("entry number: $i");
       int fragmentsCount = getIndxEntryTagValue(entry, 1, 0);
       if (fragmentsCount > totalFragmentsCount) {
         throw MobiInvalidDataException("Too many fragments");
@@ -728,7 +706,6 @@ extension RawmlParser on MobiData {
           throw MobiInvalidDataException("Invalid fragment position");
         }
         int fileNumber = getIndxEntryTagValue(entry, 3, 0);
-        print("fileNumber $fileNumber i: $i");
         if (fileNumber != i) {
           throw MobiInvalidDataException(
               "SKEL part number and fragment sequence number don't match");
@@ -1397,7 +1374,6 @@ class MobiFragment {
     MobiFragment? curr = this;
     MobiFragment? prev;
     while (curr != null) {
-      print("rawOffset ${curr.rawOffset} size ${curr.size} offset $offset");
       if (curr.rawOffset != SIZEMAX &&
           curr.rawOffset <= BigInt.from(offset) &&
           curr.rawOffset + curr.size >= BigInt.from(offset)) {

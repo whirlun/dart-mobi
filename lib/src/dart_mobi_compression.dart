@@ -83,7 +83,6 @@ class CompressionUtils {
             decompressedSize = removeZeros(decompressed);
           }
         case compressionPalmDoc:
-          print("record size $recordSize extra size $extraSize");
           final out = decompressLz77(curr.data!.sublist(0, recordSize), decompressedSize);
           decompressedSize = out.offset;
           decompressed = out.data;
@@ -227,7 +226,6 @@ class CompressionUtils {
     final buffer = MobiBuffer(data, 0);
     final outBuffer =
         MobiBuffer(Uint8List.fromList(List.filled(decompressedSize, 0)), 0);
-    print("Decompressed Size: $decompressedSize");
     while (buffer.offset < buffer.maxlen) {
       var byte = buffer.getInt8();
       if (byte >= 0xc0) {
@@ -237,8 +235,6 @@ class CompressionUtils {
         int next = buffer.getInt8();
         int distance = (((byte << 8) | next) >> 3) & 0x7ff;
         int length = (next & 0x7) + 3;
-        print("offset ${buffer.offset} maxlen ${buffer.maxlen}");
-        print("Distance: $distance, Length: $length");
         while (length-- != 0) {
           outBuffer.move(-distance, 1);
         }
@@ -331,7 +327,7 @@ class CompressionUtils {
       if (flags & (1 << bit) != 0) {
         int len = 0;
         int size = 0;
-        (len, size) = buffer.getVarLen(len);
+        (len, size) = buffer.getVarLen(len, backward: true);
         buffer.seek(-(size - len));
         extraSize += size;
       }

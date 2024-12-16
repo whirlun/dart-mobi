@@ -49,7 +49,6 @@ class DartMobiReader {
     }
     var curr = mobiData.mobiExthHeader;
     while (curr != null) {
-      print(curr);
       curr = curr.next;
     }
 
@@ -88,7 +87,6 @@ class DartMobiReader {
         curr = curr.next!;
       }
       curr.offset = buffer.getInt32();
-      print("offset ${curr.offset} buffer offset ${buffer.offset}");
       curr.attrbutes = buffer.getInt8();
       final h = buffer.getInt8();
       final l = buffer.getInt16();
@@ -116,7 +114,6 @@ class DartMobiReader {
         next = null;
       }
       curr.size = size;
-      print("Record Size: ${curr.size}");
       try {
         buffer.seek(curr.offset!, true);
         curr.data = buffer.getStringAsByte(curr.size!);
@@ -431,9 +428,7 @@ class MobiBuffer {
     if (offset + length > maxlen) {
       throw MobiBufferOverflowException();
     }
-    print("get string size $length");
     final val = data.sublist(offset, offset + length);
-    print("final size ${val.length}");
     offset += length;
     return val;
   }
@@ -527,6 +522,7 @@ class MobiBuffer {
           val <<= 7;
           val |= (byte & mask);
         }
+        byteCount++;
         hasStop = byte & stopFlag != 0;
       } while (!hasStop && (byteCount < maxCount));
     }
@@ -616,7 +612,6 @@ class MobiBuffer {
 
   bool matchMagic(String magic) {
     final magicLength = magic.length;
-    print("offset $offset maxlen $maxlen");
     if (offset + magicLength > maxlen) {
       return false;
     }
@@ -629,7 +624,6 @@ class MobiBuffer {
 
   bool matchMagicOffset(String magic, int offset) {
     bool match = false;
-    print("buf offset ${this.offset} offset $offset");
     if (offset < maxlen) {
       final savedOffset = this.offset;
       this.offset = offset;
