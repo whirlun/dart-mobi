@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:math' show min;
 
+import 'package:collection/collection.dart';
 import 'package:dart_mobi/src/dart_mobi_encryption.dart';
 import 'package:dart_mobi/src/dart_mobi_rawml.dart';
 import 'package:dart_mobi/src/dart_mobi_utils.dart';
@@ -87,6 +88,7 @@ class DartMobiReader {
         curr = curr.next!;
       }
       curr.offset = buffer.getInt32();
+      print("offset ${curr.offset} buffer offset ${buffer.offset}");
       curr.attrbutes = buffer.getInt8();
       final h = buffer.getInt8();
       final l = buffer.getInt16();
@@ -114,6 +116,7 @@ class DartMobiReader {
         next = null;
       }
       curr.size = size;
+      print("Record Size: ${curr.size}");
       try {
         buffer.seek(curr.offset!, true);
         curr.data = buffer.getStringAsByte(curr.size!);
@@ -241,7 +244,7 @@ class DartMobiReader {
     header.unknown12 = buffer.getInt32();
     header.unknown13 = buffer.getInt32();
     buffer.seek(2);
-    header.exthFlags = buffer.getInt16();
+    header.extraFlags = buffer.getInt16();
     header.ncxIndex = buffer.getInt32();
     if (isKF8) {
       header.fragmentIndex = buffer.getInt32();
@@ -428,7 +431,9 @@ class MobiBuffer {
     if (offset + length > maxlen) {
       throw MobiBufferOverflowException();
     }
+    print("get string size $length");
     final val = data.sublist(offset, offset + length);
+    print("final size ${val.length}");
     offset += length;
     return val;
   }
@@ -553,7 +558,7 @@ class MobiBuffer {
       if (offset < moveOffset || offset + len > maxlen) {
         throw MobiBufferOverflowException();
       }
-      source -= offset;
+      source -= moveOffset;
     }
 
     data.setRange(offset, offset + len, data.getRange(source, source + len));
@@ -611,10 +616,12 @@ class MobiBuffer {
 
   bool matchMagic(String magic) {
     final magicLength = magic.length;
+    print("offset $offset maxlen $maxlen");
     if (offset + magicLength > maxlen) {
       return false;
     }
-    if (data.sublist(offset, offset + magicLength) == magic.codeUnits) {
+    final eq = ListEquality().equals;
+    if (eq(data.sublist(offset, offset + magicLength), magic.codeUnits)) {
       return true;
     }
     return false;
@@ -622,6 +629,7 @@ class MobiBuffer {
 
   bool matchMagicOffset(String magic, int offset) {
     bool match = false;
+    print("buf offset ${this.offset} offset $offset");
     if (offset < maxlen) {
       final savedOffset = this.offset;
       this.offset = offset;

@@ -279,8 +279,8 @@ class EncryptionUtils {
   }
 
   static bool isEncrypted(MobiData data) {
-    return isMobiPocket(data) ||
-        isTextRead(data) ||
+    return (isMobiPocket(data) ||
+        isTextRead(data)) &&
         data.record0header?.encryptionType == mobiEncryptionV1 ||
         data.record0header?.encryptionType == mobiEncryptionV2;
   }

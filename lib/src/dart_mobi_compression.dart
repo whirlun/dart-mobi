@@ -15,8 +15,8 @@ class CompressionUtils {
     Uint8List res = Uint8List(0);
 
     int offset = getKf8Offset(data);
-    if (data.record0header != null ||
-        data.record0header!.textRecordCount! != 0) {
+    if (data.record0header == null ||
+        data.record0header!.textRecordCount! == 0) {
       throw MobiInvalidDataException("Text Record not Found");
     }
     final textRecIndex = 1 + offset;
@@ -58,7 +58,7 @@ class CompressionUtils {
         }
 
         if (compressionType != compressionHuffCdic && (extraFlags & 1) != 0) {
-          extraSize = getRecordExtraSize(curr, extraSize);
+          extraSize = getRecordExtraSize(curr, extraFlags);
         }
       }
       if (extraSize > curr.size!) {
@@ -83,7 +83,8 @@ class CompressionUtils {
             decompressedSize = removeZeros(decompressed);
           }
         case compressionPalmDoc:
-          final out = decompressLz77(curr.data!, decompressedSize);
+          print("record size $recordSize extra size $extraSize");
+          final out = decompressLz77(curr.data!.sublist(0, recordSize), decompressedSize);
           decompressedSize = out.offset;
           decompressed = out.data;
         case compressionHuffCdic:
@@ -94,7 +95,7 @@ class CompressionUtils {
           throw MobiInvalidDataException("Unknown Compression Type");
       }
       curr = curr.next;
-      res = res + decompressed as Uint8List;
+      res = Uint8List.fromList(res + decompressed);
     }
     return res;
   }
@@ -226,6 +227,7 @@ class CompressionUtils {
     final buffer = MobiBuffer(data, 0);
     final outBuffer =
         MobiBuffer(Uint8List.fromList(List.filled(decompressedSize, 0)), 0);
+    print("Decompressed Size: $decompressedSize");
     while (buffer.offset < buffer.maxlen) {
       var byte = buffer.getInt8();
       if (byte >= 0xc0) {
@@ -233,8 +235,10 @@ class CompressionUtils {
         outBuffer.add8(byte ^ 0x80);
       } else if (byte >= 0x80) {
         int next = buffer.getInt8();
-        int distance = ((byte << 8) | next >> 3) & 0x7ff;
+        int distance = (((byte << 8) | next) >> 3) & 0x7ff;
         int length = (next & 0x7) + 3;
+        print("offset ${buffer.offset} maxlen ${buffer.maxlen}");
+        print("Distance: $distance, Length: $length");
         while (length-- != 0) {
           outBuffer.move(-distance, 1);
         }

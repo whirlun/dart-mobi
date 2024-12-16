@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:math';
+import 'package:collection/collection.dart';
 import 'package:dart_mobi/src/dart_mobi_const.dart';
 import 'package:dart_mobi/src/dart_mobi_data.dart';
 import 'package:dart_mobi/src/dart_mobi_exception.dart';
@@ -78,8 +79,10 @@ getMaxTextSize(MobiData m) {
 
 int getMaxTextRecordSize(MobiData m) {
   int maxRecordSize = record0TextSizeMax;
-  if (m.record0header != null &&
-      m.record0header!.textRecordSize! > record0TextSizeMax) {
+  if (m.record0header != null) {
+    if (m.record0header!.textRecordSize! > record0TextSizeMax) {
+      maxRecordSize = m.record0header!.textRecordSize!;
+    }
     if (m.mobiHeader != null && getFileVersion(m) <= 3) {
       int textLength = maxRecordSize * m.record0header!.textRecordCount!;
       if (textLength <= rawTextSizeMax &&
@@ -281,15 +284,15 @@ MobiFileType determineFontType(Uint8List data, int size) {
   final otfMagic = "OTTO";
   final ttfMagic = "\\0\\1\\0\\0";
   final ttf2Magic = "true";
-
+  final eq = ListEquality().equals;
   if (size > 4) {
-    if (data.sublist(0, 4) == otfMagic.codeUnits) {
+    if (eq(data.sublist(0, 4), otfMagic.codeUnits)) {
       return MobiFileType.otf;
     }
-    if (data.sublist(0, 4) == ttfMagic.codeUnits) {
+    if (eq(data.sublist(0, 4), ttfMagic.codeUnits)) {
       return MobiFileType.ttf;
     }
-    if (data.sublist(0, 4) == ttf2Magic.codeUnits) {
+    if (eq(data.sublist(0, 4), ttf2Magic.codeUnits)) {
       return MobiFileType.ttf;
     }
   }
