@@ -1,13 +1,13 @@
 name: dart_mobi
 description: A port of libmobi in dart.
-version: 1.0.0
+version: 1.0.2
 repository: https://github.com/whirlun/dart-mobi
 
 environment:
   sdk: ^3.5.0
 
 dependencies:
-  collection: ^1.19.1
+  collection: ^1.19.0
   archive: ^4.0.1
 # Add regular dependencies here.
   # path: ^1.8.0
