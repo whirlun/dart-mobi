@@ -17,7 +17,7 @@ extension RawmlParser on MobiData {
 
     int length = maxLen;
     MobiRawml rawml = MobiRawml();
-    final rawRawml = getRawml(length);
+    final rawRawml = RawMlUtils.getRawml(this, length);
     if (existsFdst(this)) {
       if (mobiHeader?.fdstSectionCount != null &&
           mobiHeader!.fdstSectionCount! > 1) {
@@ -25,32 +25,32 @@ extension RawmlParser on MobiData {
       }
     }
 
-    reconstructFlow(rawml, rawRawml, length);
-    reconstructResources(this, rawml);
+    RawMlUtils.reconstructFlow(rawml, rawRawml, length);
+    RawMlUtils.reconstructResources(this, rawml);
     final offset = getKf8Offset(this);
     if (existsSkelIndx(this) && existsFragIndx(this)) {
       final indxRecordNumber = mobiHeader!.skeletonIndex! + offset;
       MobiIndx skelMeta = MobiIndx();
-      parseIndex(this, skelMeta, indxRecordNumber);
+      RawMlUtils.parseIndex(this, skelMeta, indxRecordNumber);
       rawml.skel = skelMeta;
     }
     if (existsFragIndx(this)) {
       MobiIndx fragMeta = MobiIndx();
       final indxRecordNumber = mobiHeader!.fragmentIndex! + offset;
-      parseIndex(this, fragMeta, indxRecordNumber);
+      RawMlUtils.parseIndex(this, fragMeta, indxRecordNumber);
       rawml.frag = fragMeta;
     }
     if (parseToc) {
       if (existsGuideIndx(this)) {
         MobiIndx guideMeta = MobiIndx();
         final indxRecordNumber = mobiHeader!.guideIndex! + offset;
-        parseIndex(this, guideMeta, indxRecordNumber);
+        RawMlUtils.parseIndex(this, guideMeta, indxRecordNumber);
         rawml.guide = guideMeta;
       }
       if (existsNcx(this)) {
         MobiIndx ncxMeta = MobiIndx();
         final indxRecordNumber = mobiHeader!.ncxIndex! + offset;
-        parseIndex(this, ncxMeta, indxRecordNumber);
+        RawMlUtils.parseIndex(this, ncxMeta, indxRecordNumber);
         rawml.ncx = ncxMeta;
       }
     }
@@ -58,18 +58,18 @@ extension RawmlParser on MobiData {
     if (parseDict && isDictionary(this)) {
       MobiIndx orthData = MobiIndx();
       final indxRecordNumber = mobiHeader!.orthographicIndex! + offset;
-      parseIndex(this, orthData, indxRecordNumber);
+      RawMlUtils.parseIndex(this, orthData, indxRecordNumber);
       rawml.orth = orthData;
       if (existsInfl(this)) {
         MobiIndx inflData = MobiIndx();
         final indxRecordNumber = mobiHeader!.inflectionIndex! + offset;
-        parseIndex(this, inflData, indxRecordNumber);
+        RawMlUtils.parseIndex(this, inflData, indxRecordNumber);
         rawml.infl = inflData;
       }
     }
-    reconstructParts(rawml);
+    RawMlUtils.reconstructParts(rawml);
     if (reconstruct) {
-      reconstructLinks(rawml);
+      RawMlUtils.reconstructLinks(rawml);
       if (mobiIsKf8(this)) {}
     }
     if (getEncoding(this) == MobiEncoding.CP1252) {
@@ -78,7 +78,10 @@ extension RawmlParser on MobiData {
     return rawml;
   }
 
-  parseIndex(MobiData data, MobiIndx indx, int indxRecordNumber) {
+}
+
+class RawMlUtils {
+  static void parseIndex(MobiData data, MobiIndx indx, int indxRecordNumber) {
     MobiTagx tagx = MobiTagx();
     MobiOrdt ordt = MobiOrdt();
     var record = DartMobiReader.getRecordBySeqNumber(
@@ -104,7 +107,7 @@ extension RawmlParser on MobiData {
     }
   }
 
-  void parseIndx(
+  static void parseIndx(
       MobiPdbRecord indxRecord, MobiIndx indx, MobiTagx tagx, MobiOrdt ordt) {
     MobiBuffer buf = MobiBuffer(indxRecord.data!, 0);
     final indxMagic = buf.getString(4);
@@ -225,7 +228,7 @@ extension RawmlParser on MobiData {
     }
   }
 
-  void parseIndexEntry(MobiIndx indx, MobiIdxt idxt, MobiTagx tagx,
+  static void parseIndexEntry(MobiIndx indx, MobiIdxt idxt, MobiTagx tagx,
       MobiOrdt ordt, MobiBuffer buf, int currNumber) {
     final entryOffset = indx.entriesCount;
     final entryLength = idxt.offsets[currNumber + 1] - idxt.offsets[currNumber];
@@ -330,7 +333,7 @@ extension RawmlParser on MobiData {
     buf.maxlen = maxlen;
   }
 
-  String indxGetLabel(MobiBuffer buf, int length, bool hasLigatures) {
+  static String indxGetLabel(MobiBuffer buf, int length, bool hasLigatures) {
     Uint8List output = Uint8List(indxLabelSizeMax + 1);
     int outputPtr = 0;
     if (buf.offset + length > buf.maxlen) {
@@ -362,7 +365,7 @@ extension RawmlParser on MobiData {
     return String.fromCharCodes(output.sublist(0, outputLength));
   }
 
-  String getStringOrdt(MobiOrdt ordt, MobiBuffer buf, int length) {
+  static String getStringOrdt(MobiOrdt ordt, MobiBuffer buf, int length) {
     int i = 0;
     int outputLength = 0;
     int outputPtr = 0;
@@ -452,7 +455,7 @@ extension RawmlParser on MobiData {
     return String.fromCharCodes(output.sublist(0, outputLength));
   }
 
-  (int, int) ordtGetBuffer(MobiOrdt ordt, MobiBuffer buf, int offset) {
+  static (int, int) ordtGetBuffer(MobiOrdt ordt, MobiBuffer buf, int offset) {
     int i = 0;
     if (ordt.type == 1) {
       offset = buf.getInt8();
@@ -464,7 +467,7 @@ extension RawmlParser on MobiData {
     return (i, offset);
   }
 
-  int ordtLookup(MobiOrdt ordt, int offset) {
+  static int ordtLookup(MobiOrdt ordt, int offset) {
     int utf16;
     if (offset < ordt.offsetsCount) {
       utf16 = ordt.ordt2[offset];
@@ -474,7 +477,7 @@ extension RawmlParser on MobiData {
     return utf16;
   }
 
-  void parseIdxt(MobiBuffer buf, MobiIdxt idxt, int entriesCount) {
+  static void parseIdxt(MobiBuffer buf, MobiIdxt idxt, int entriesCount) {
     final idxtOffset = buf.offset;
     final magic = buf.getString(4);
     if (magic != "IDXT") {
@@ -489,7 +492,7 @@ extension RawmlParser on MobiData {
     idxt.offsetsCount = i;
   }
 
-  void parseOrdt(MobiBuffer buf, MobiOrdt ordt) {
+  static void parseOrdt(MobiBuffer buf, MobiOrdt ordt) {
     buf.setPos(ordt.ordt1Pos);
     if (buf.matchMagic("ORDT")) {
       buf.seek(4);
@@ -516,7 +519,7 @@ extension RawmlParser on MobiData {
     }
   }
 
-  void parseTagx(MobiBuffer buf, MobiTagx tagx) {
+  static void parseTagx(MobiBuffer buf, MobiTagx tagx) {
     buf.seek(4);
     var tagxRecordLength = buf.getInt32();
     if (tagxRecordLength < 12) {
@@ -548,7 +551,7 @@ extension RawmlParser on MobiData {
     tagx.tagsCount = i;
   }
 
-  int getIndxEntryTagValue(MobiIndexEntry entry, int tagId, int tagIndex) {
+  static int getIndxEntryTagValue(MobiIndexEntry entry, int tagId, int tagIndex) {
     int i = 0;
     while (i < entry.tagsCount) {
       if (entry.tags[i].tagId == tagId) {
@@ -562,7 +565,7 @@ extension RawmlParser on MobiData {
     throw MobiInvalidDataException("Tag not found in entry");
   }
 
-  void reconstructFlow(MobiRawml rawml, Uint8List text, int length) {
+  static void reconstructFlow(MobiRawml rawml, Uint8List text, int length) {
     if (rawml.fdst != null) {
       rawml.flow = MobiPart();
       var curr = rawml.flow;
@@ -611,7 +614,7 @@ extension RawmlParser on MobiData {
     }
   }
 
-  void reconstructResources(MobiData data, MobiRawml rawml) {
+  static void reconstructResources(MobiData data, MobiRawml rawml) {
     var firstResSeqNumber = getFirstResourceRecord(data);
     if (firstResSeqNumber == mobiNotSet) {
       firstResSeqNumber = 0;
@@ -660,7 +663,7 @@ extension RawmlParser on MobiData {
     }
   }
 
-  void reconstructParts(MobiRawml rawml) {
+  static void reconstructParts(MobiRawml rawml) {
     if (rawml.flow == null) {
       throw MobiInvalidDataException("No flow data");
     }
@@ -745,7 +748,7 @@ extension RawmlParser on MobiData {
     }
   }
 
-  void reconstructLinks(MobiRawml rawml) {
+  static void reconstructLinks(MobiRawml rawml) {
     if (isRawmlKf8(rawml)) {
       reconstructLinksKf8(rawml);
     } else {
@@ -753,9 +756,9 @@ extension RawmlParser on MobiData {
     }
   }
 
-  void reconstructLinksKf7(MobiRawml rawml) {}
+  static void reconstructLinksKf7(MobiRawml rawml) {}
 
-  void reconstructLinksKf8(MobiRawml rawml) {
+  static void reconstructLinksKf8(MobiRawml rawml) {
     NewData? partData;
     NewData? curData;
     List<MobiPart> parts = [rawml.markup!, rawml.flow!.next!];
@@ -852,7 +855,7 @@ extension RawmlParser on MobiData {
     }
   }
 
-  (String, MobiAttrType) posfidToLink(
+  static (String, MobiAttrType) posfidToLink(
       MobiRawml rawml, Uint8List value, MobiAttrType prefAttr) {
     if (value.length < "kindle:pos:fid:0000:off:0000000000".length) {
       return ("", prefAttr);
@@ -880,7 +883,7 @@ extension RawmlParser on MobiData {
     }
   }
 
-  String flowToLink(MobiRawml rawml, Uint8List value) {
+  static String flowToLink(MobiRawml rawml, Uint8List value) {
     if (value.length < "kindle:flow:0000?mime=".length) {
       return "";
     }
@@ -898,7 +901,7 @@ extension RawmlParser on MobiData {
     return "\"flow${flow.uid.toString().padLeft(5, "0")}.$extension\"";
   }
 
-  String embedToLink(MobiRawml rawml, Uint8List value) {
+  static String embedToLink(MobiRawml rawml, Uint8List value) {
     int valuePtr = 0;
     while (value[valuePtr] != '"'.codeUnits[0] ||
         value[valuePtr] != "'".codeUnits[0] ||
@@ -921,12 +924,12 @@ extension RawmlParser on MobiData {
     return "\"resource${partId.toString().padLeft(5, "0")}.$extension\"";
   }
 
-  MobiPart? getFlowByFid(MobiRawml rawml, Uint8List fid) {
+  static MobiPart? getFlowByFid(MobiRawml rawml, Uint8List fid) {
     int partId = base32Decode(fid);
     return getFlowByUid(rawml, partId);
   }
 
-  MobiPart? getFlowByUid(MobiRawml rawml, int uid) {
+  static MobiPart? getFlowByUid(MobiRawml rawml, int uid) {
     MobiPart? part = rawml.flow;
     while (part != null) {
       if (part.uid == uid) {
@@ -937,7 +940,7 @@ extension RawmlParser on MobiData {
     return null;
   }
 
-  (int, String, MobiAttrType) getIdByPosOff(
+  static (int, String, MobiAttrType) getIdByPosOff(
       MobiRawml rawml, int posFid, int posOff, MobiAttrType prefAttr) {
     var (offset, fileNumber) = getOffSetByPosOff(rawml, posFid, posOff);
     MobiPart html = getPartByUid(rawml, fileNumber);
@@ -945,7 +948,7 @@ extension RawmlParser on MobiData {
     return (fileNumber, id, prefAttr2);
   }
 
-  (int, int) getOffSetByPosOff(MobiRawml rawml, int posFid, int posOff) {
+  static (int, int) getOffSetByPosOff(MobiRawml rawml, int posFid, int posOff) {
     if (rawml.frag == null || rawml.skel == null) {
       throw MobiInvalidDataException("No fragment or skel data");
     }
@@ -965,7 +968,7 @@ extension RawmlParser on MobiData {
     return (offset, fileNr);
   }
 
-  (String, MobiAttrType) getIdByOffset(
+  static (String, MobiAttrType) getIdByOffset(
       MobiPart html, int offset, MobiAttrType prefAttr) {
     if (offset > html.size) {
       throw MobiInvalidDataException("Offset $offset is out of range");
@@ -987,7 +990,7 @@ extension RawmlParser on MobiData {
     return (id, prefAttr);
   }
 
-  (int, String) getAttributeValue(
+  static (int, String) getAttributeValue(
       Uint8List data, int size, String attribute, bool onlyQuoted) {
     int length = size;
     int attrLength = attribute.length;
@@ -1059,7 +1062,7 @@ extension RawmlParser on MobiData {
     return (2147483647, "");
   }
 
-  MobiPart getPartByUid(MobiRawml rawml, int uid) {
+  static MobiPart getPartByUid(MobiRawml rawml, int uid) {
     if (rawml.markup == null) {
       throw MobiInvalidDataException("No markup data");
     }
@@ -1073,12 +1076,12 @@ extension RawmlParser on MobiData {
     throw MobiInvalidDataException("Part with uid $uid not found");
   }
 
-  MobiResult searchLinksKf8(
+  static MobiResult searchLinksKf8(
       Uint8List data, int start, int end, MobiFileType type) {
     return findAttrValue(data, start, end, type, "kindle:");
   }
 
-  Uint8List processReplica(Uint8List text, int length) {
+  static Uint8List processReplica(Uint8List text, int length) {
     MobiBuffer buf = MobiBuffer(text, 12);
     final pdfOffset = buf.getInt32();
     final pdfLength = buf.getInt32();
@@ -1090,7 +1093,7 @@ extension RawmlParser on MobiData {
     return pdf;
   }
 
-  MobiFileType determineFlowPartType(MobiRawml rawml, int partNumber) {
+  static MobiFileType determineFlowPartType(MobiRawml rawml, int partNumber) {
     if (partNumber == 0 || isRawmlKf8(rawml)) {
       return MobiFileType.html;
     }
@@ -1114,7 +1117,7 @@ extension RawmlParser on MobiData {
     return MobiFileType.unknown;
   }
 
-  MobiFileType determineResourceType(MobiPdbRecord record) {
+  static MobiFileType determineResourceType(MobiPdbRecord record) {
     if (record.size! < 4) {
       return MobiFileType.unknown;
     }
@@ -1163,7 +1166,7 @@ extension RawmlParser on MobiData {
     return MobiFileType.unknown;
   }
 
-  MobiResult findAttrValue(Uint8List flowData, int start, int end,
+  static MobiResult findAttrValue(Uint8List flowData, int start, int end,
       MobiFileType type, String needle) {
     final result = MobiResult();
     final needleLength = needle.length;
@@ -1228,12 +1231,12 @@ extension RawmlParser on MobiData {
     return result;
   }
 
-  Uint8List getRawml(int length) {
-    if (record0header!.textLength! > length) {
+  static Uint8List getRawml(MobiData data, int length) {
+    if (data.record0header!.textLength! > length) {
       throw MobiInvalidParameterException(
           "Text Length in Record 0 is Longer Than Declared Length");
     }
-    return CompressionUtils.decompressContent(this);
+    return CompressionUtils.decompressContent(data);
   }
 }
 

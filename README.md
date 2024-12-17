@@ -1,39 +1,28 @@
-<!-- 
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+A port of [libmobi](https://github.com/bfabiszewski/libmobi) to Dart.
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages). 
-
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages). 
--->
-
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+**NOTE**: This package is a direct port of functions of libmobi and is not thoroughly tested. Use it at your own risk.
 
 ## Features
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
-
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+* Reading and parsing mobi, azw, azw3, azw4 files
+* Reconstructing dictionary, reference and links
+* Only rely on `UInt8List` so it is usable on web
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder. 
-
 ```dart
-const like = 'sample';
+import 'package:dart_mobi/dart_mobi.dart';
+import "dart:io";
+import "dart:convert";
+void main() async {
+  final data = await File("example/980.mobi").readAsBytes();
+  final mobiData = await DartMobiReader.read(data);
+  final rawml = mobiData.parseOpt(true, true, false);
+  print(utf8.decode(List<int>.from(rawml.markup!.data!)));
+}
 ```
 
-## Additional information
+## TODO
 
-TODO: Tell users more about the package: where to find more information, how to 
-contribute to the package, how to file issues, what response they can expect 
-from the package authors, and more.
+* Write mobi files
+* finish encryption

@@ -1,5 +1,3 @@
-import 'package:dart_mobi/src/dart_mobi_encryption.dart';
-
 abstract class MobiException implements Exception {
   final String message;
 

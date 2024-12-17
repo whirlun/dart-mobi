@@ -81,7 +81,7 @@ if (m == NULL) {
 }
 
 /* Open file for reading */
-FILE *file = fopen("./quick.mobi", "rb");
+FILE *file = fopen("./980.mobi", "rb");
 if (file == NULL) {
   printf("Failed to open file\n");
   mobi_free(m);
@@ -98,6 +98,7 @@ if (mobi_ret != MOBI_SUCCESS) {
   return -1;
 }
 
+printf("Encryption Type: %d\n", m->rh->encryption_type);
 /* Initialize MOBIRawml structure */
 /* Must be deallocated with mobi_free_rawml() when not needed */
 /* In the next step this structure will be filled with parsed data */
