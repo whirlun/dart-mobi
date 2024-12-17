@@ -1,6 +1,6 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:math';
+import 'package:archive/archive.dart';
 import 'package:collection/collection.dart';
 import 'package:dart_mobi/src/dart_mobi_const.dart';
 import 'package:dart_mobi/src/dart_mobi_data.dart';
@@ -339,7 +339,8 @@ Uint8List decodeFontResource(MobiPart part) {
   final encodedSize = (buffer.maxlen - buffer.offset);
   final encodedFont = buffer.data.sublist(buffer.offset);
   if (header.flags & zlibFlag != 0) {
-    decodedFont = zlib.decode(encodedFont);
+    ZLibDecoder zlib = ZLibDecoder();
+    decodedFont = zlib.decodeBytes(encodedFont);
     if (decodedFont.length != header.decodedSize) {
       throw MobiInvalidDataException(
           "Decompressed font size is different from declared size.");
