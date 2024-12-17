@@ -1,6 +1,6 @@
 A port of [libmobi](https://github.com/bfabiszewski/libmobi) to Dart.
 
-**NOTE**: This package is a direct port of functions of libmobi and is not thoroughly tested. Use it at your own risk.
+**NOTE**: This package is a direct port of functions of libmobi mainly for my personal use and is not thoroughly tested. Use it at your own risk.
 
 ## Features
 
