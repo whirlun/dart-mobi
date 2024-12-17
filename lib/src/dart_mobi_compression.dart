@@ -32,7 +32,6 @@ class CompressionUtils {
     if (compressionType == compressionHuffCdic) {
       parseHuffdic(data, huffcdic);
     }
-    int textLength = 0;
     while (textRecCount-- != 0 && curr != null) {
       int extraSize = 0;
       if (extraFlags != 0) {
@@ -83,7 +82,8 @@ class CompressionUtils {
             decompressedSize = removeZeros(decompressed);
           }
         case compressionPalmDoc:
-          final out = decompressLz77(curr.data!.sublist(0, recordSize), decompressedSize);
+          final out = decompressLz77(
+              curr.data!.sublist(0, recordSize), decompressedSize);
           decompressedSize = out.offset;
           decompressed = out.data;
         case compressionHuffCdic:
@@ -322,9 +322,9 @@ class CompressionUtils {
   static int getRecordExtraSize(MobiPdbRecord record, int flags) {
     int extraSize = 0;
     final buffer = MobiBuffer(record.data!, 0);
-    buffer.seek(buffer.maxlen - 1, true);
+    buffer.setPos(buffer.maxlen - 1);
     for (int bit = 15; bit > 0; bit--) {
-      if (flags & (1 << bit) != 0) {
+      if ((flags & (1 << bit)) != 0) {
         int len = 0;
         int size = 0;
         (len, size) = buffer.getVarLen(len, backward: true);
@@ -334,7 +334,7 @@ class CompressionUtils {
     }
     if ((flags & 1) != 0) {
       final b = buffer.getInt8();
-      extraSize += (b * 0x3) + 1;
+      extraSize += (b & 0x3) + 1;
     }
     return extraSize;
   }

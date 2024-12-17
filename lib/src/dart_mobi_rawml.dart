@@ -727,7 +727,8 @@ extension RawmlParser on MobiData {
         if (firstFragment.fragment.isNotEmpty) {
           skelText.setRange(
               ptr, ptr + firstFragment.size.toInt(), firstFragment.fragment);
-          ptr += firstFragment.size.toInt();}
+          ptr += firstFragment.size.toInt();
+        }
         firstFragment = firstFragment.next;
       }
       if (i > 0) {
@@ -835,9 +836,11 @@ extension RawmlParser on MobiData {
             part.uid == partData.partUid &&
             i == partData.partGroup) {
           MobiFragment? fragData = partData.list;
-          Uint8List dataOut = Uint8List(0);
+          Uint8List dataOut = Uint8List(partData.size);
+          int ptr = 0;
           while (fragData != null) {
-            dataOut.addAll(fragData.fragment);
+            dataOut.setRange(ptr, ptr + fragData.size.toInt(), fragData.fragment);
+            ptr += fragData.size.toInt();
             fragData = fragData.next;
           }
           part.data = dataOut;
