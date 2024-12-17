@@ -55,23 +55,6 @@ void print_rawml_structure(MOBIRawml *rawml) {
     print_parts(rawml->resources, "Resources");
 }
 
-static uint32_t get_drm_status(MOBIData *mobi) {
-    if (!mobi || !mobi->mh) {
-        return 0;
-    }
-    return *mobi->mh->drm_offset;
-}
-
-static void print_drm_info(MOBIData *mobi) {
-    uint32_t drm = get_drm_status(mobi);
-    printf("DRM Status: %u\n", drm);
-    if (drm != 0) {
-        printf("Book is DRM protected\n");
-    } else {
-        printf("Book is DRM free\n");
-    }
-}
-
 int main(int argc, char *argv[]) {
     /* Initialize main MOBIData structure */
 /* Must be deallocated with mobi_free() when not needed */
@@ -121,7 +104,6 @@ if (mobi_ret != MOBI_SUCCESS) {
 /* Do something useful here */
 /* ... */
 /* For examples how to access data in MOBIRawml structure see mobitool.c */
-print_drm_info(m);
 print_rawml_structure(rawml);
 //print_content(rawml);
 /* Free MOBIRawml structure */
